@@ -1,0 +1,274 @@
+package com.example.agrhoradeaprender
+
+import android.os.Bundle
+import android.os.Parcel
+import android.os.Parcelable
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.google.gson.Gson
+
+// Classe de dados para Produto
+data class Produto(val nome: String, val categoria: String, var preco: Double, var quantidade: Int) : Parcelable {
+    constructor(parcel: Parcel) : this(
+        parcel.readString() ?: "",
+        parcel.readString() ?: "",
+        parcel.readDouble(),
+        parcel.readInt()
+    )
+
+    override fun writeToParcel(parcel: Parcel, flags: Int) {
+        parcel.writeString(nome)
+        parcel.writeString(categoria)
+        parcel.writeDouble(preco)
+        parcel.writeInt(quantidade)
+    }
+
+    override fun describeContents(): Int = 0
+
+    companion object CREATOR : Parcelable.Creator<Produto> {
+        override fun createFromParcel(parcel: Parcel): Produto = Produto(parcel)
+        override fun newArray(size: Int): Array<Produto?> = arrayOfNulls(size)
+    }
+}
+
+// Classe Estoque para manipular produtos
+class Estoque {
+    companion object {
+        val produtos = mutableListOf<Produto>()
+
+        fun adicionarProduto(produto: Produto) {
+            val existingProduct = produtos.find { it.nome == produto.nome }
+            if (existingProduct != null) {
+                existingProduct.quantidade += produto.quantidade
+            } else {
+                produtos.add(produto)
+            }
+        }
+
+        fun calcularValorTotalEstoque(): Double {
+            return produtos.sumOf { it.preco * it.quantidade }
+        }
+
+        fun calcularQuantidadeTotalProdutos(): Int {
+            return produtos.sumOf { it.quantidade }
+        }
+    }
+}
+
+// ViewModel para gerenciar a lista de produtos
+class ProdutoViewModel : ViewModel() {
+    var listaProdutos = Estoque.produtos
+}
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            LayoutMain()
+        }
+    }
+}
+
+@Composable
+fun LayoutMain() {
+    val navController = rememberNavController()
+    val produtoViewModel: ProdutoViewModel = viewModel()
+    NavHost(navController = navController, startDestination = "home") {
+        composable("home") { TelaHome(navController) }
+        composable("tela1") { Tela1(navController, produtoViewModel) }
+        composable("detalhes/{produtoJson}") { backStackEntry ->
+            val produtoJSON = backStackEntry.arguments?.getString("produtoJson")
+            val produto = Gson().fromJson(produtoJSON, Produto::class.java)
+            DetalhesProduto(produto, navController)
+        }
+        composable("cadastro") { TelaCadastro(navController, produtoViewModel) }
+        composable("estatisticas") { TelaEstatisticas(navController) }
+    }
+}
+
+@Composable
+fun TelaHome(navController: NavController) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Bem-vindo!", fontSize = 24.sp)
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(onClick = { navController.navigate("cadastro") }) {
+            Text(text = "Cadastrar Produto")
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Button(onClick = { navController.navigate("tela1") }) {
+            Text(text = "Listar Produtos")
+        }
+    }
+}
+
+@Composable
+fun Tela1(navController: NavController, produtoViewModel: ProdutoViewModel) {
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            text = "PRODUTOS CADASTRADOS",
+            fontSize = 25.sp,
+            modifier = Modifier.padding(10.dp)
+        )
+
+        LazyColumn {
+            items(produtoViewModel.listaProdutos) { produto ->
+                Card(
+                    modifier = Modifier.padding(10.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = produto.nome, fontSize = 20.sp)
+                        Button(onClick = {
+                            val produtoJSON = Gson().toJson(produto)
+                            navController.navigate("detalhes/$produtoJSON")
+                        }) {
+                            Text(text = "Detalhes")
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(onClick = { navController.navigate("cadastro") }) {
+                Text(text = "Adicionar Produto")
+            }
+
+            Button(onClick = { navController.navigate("estatisticas") }) {
+                Text(text = "Estatísticas")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TelaCadastro(navController: NavController, produtoViewModel: ProdutoViewModel) {
+    var nome by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf("") }
+    var preco by remember { mutableStateOf("") }
+    var quantidade by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    Column(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Cadastrar Produto", fontSize = 25.sp)
+
+        Spacer(modifier = Modifier.height(20.dp))
+        TextField(value = nome, onValueChange = { nome = it }, label = { Text("Nome") })
+        TextField(value = categoria, onValueChange = { categoria = it }, label = { Text("Categoria") })
+        TextField(value = preco, onValueChange = { preco = it }, label = { Text("Preço") })
+        TextField(value = quantidade, onValueChange = { quantidade = it }, label = { Text("Quantidade em Estoque") })
+
+        if (errorMessage.isNotEmpty()) {
+            Text(text = errorMessage, color = Color.Red)
+        }
+
+        Button(onClick = {
+            val precoValue = preco.toDoubleOrNull()
+            val quantidadeValue = quantidade.toIntOrNull()
+
+            if (precoValue == null || precoValue < 0 || quantidadeValue == null || quantidadeValue < 1) {
+                errorMessage = "Preço deve ser >= 0 e quantidade deve ser >= 1."
+                Toast.makeText(navController.context, errorMessage, Toast.LENGTH_SHORT).show()
+            } else {
+                val novoProduto = Produto(nome, categoria, precoValue, quantidadeValue)
+                Estoque.adicionarProduto(novoProduto)
+                navController.popBackStack()
+            }
+        }) {
+            Text(text = "Salvar Produto")
+        }
+    }
+}
+
+@Composable
+fun DetalhesProduto(produto: Produto, navController: NavController) {
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "Detalhes do Produto", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Nome: ${produto.nome}")
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Categoria: ${produto.categoria}")
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Preço: R$ ${produto.preco}")
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Quantidade em Estoque: ${produto.quantidade}")
+        Spacer(modifier = Modifier.height(15.dp))
+
+        Button(onClick = { navController.popBackStack() }) {
+            Text(text = "Voltar")
+        }
+    }
+}
+
+@Composable
+fun TelaEstatisticas(navController: NavController) {
+    val valorTotal = Estoque.calcularValorTotalEstoque()
+    val quantidadeTotal = Estoque.calcularQuantidadeTotalProdutos()
+
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "Estatísticas do Estoque", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Valor Total do Estoque: R$ ${valorTotal.format(2)}")
+        Spacer(modifier = Modifier.height(15.dp))
+        Text(text = "Quantidade Total de Produtos: $quantidadeTotal")
+        Spacer(modifier = Modifier.height(15.dp))
+
+        Button(onClick = { navController.popBackStack() }) {
+            Text(text = "Voltar")
+        }
+    }
+}
+
+// Extensão para formatar o valor em String
+fun Double.format(digits: Int) = "%.${digits}f".format(this)
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewLayout() {
+    LayoutMain()
+}
